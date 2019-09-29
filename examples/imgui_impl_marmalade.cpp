@@ -12,8 +12,6 @@
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
-//  2019-07-21: Inputs: Added mapping for ImGuiKey_KeyPadEnter.
-//  2019-05-11: Inputs: Don't filter value from character callback before calling AddInputCharacter().
 //  2018-11-30: Misc: Setting up io.BackendPlatformName/io.BackendRendererName so they can be displayed in the About Window.
 //  2018-02-16: Misc: Obsoleted the io.RenderDrawListsFn callback and exposed ImGui_Marmalade_RenderDrawData() in the .h file so you can call it yourself.
 //  2018-02-06: Misc: Removed call to ImGui::Shutdown() which is not available from 1.60 WIP, user needs to call CreateContext/DestroyContext themselves.
@@ -30,7 +28,6 @@
 
 // Data
 static double       g_Time = 0.0f;
-static bool         g_MousePressed[3] = { false, false, false };
 static CIwTexture*  g_FontTexture = NULL;
 static char*        g_ClipboardText = NULL;
 static bool         g_osdKeyboardEnabled = false;
@@ -132,16 +129,23 @@ int32 ImGui_Marmalade_PointerButtonEventCallback(void* system_data, void* user_d
 
     if (pEvent->m_Pressed == 1)
     {
-        if (pEvent->m_Button == S3E_POINTER_BUTTON_LEFTMOUSE)
-            g_MousePressed[0] = true;
-        if (pEvent->m_Button == S3E_POINTER_BUTTON_RIGHTMOUSE)
-            g_MousePressed[1] = true;
-        if (pEvent->m_Button == S3E_POINTER_BUTTON_MIDDLEMOUSE)
-            g_MousePressed[2] = true;
-        if (pEvent->m_Button == S3E_POINTER_BUTTON_MOUSEWHEELUP)
-            io.MouseWheel += pEvent->m_y;
-        if (pEvent->m_Button == S3E_POINTER_BUTTON_MOUSEWHEELDOWN)
-            io.MouseWheel += pEvent->m_y;
+        switch(pEvent->m_Button)
+        {
+        case S3E_POINTER_BUTTON_LEFTMOUSE: { io.InputMouseClicked[0] = true; } break;
+        case S3E_POINTER_BUTTON_RIGHTMOUSE: { io.InputMouseClicked[1] = true; } break;
+        case S3E_POINTER_BUTTON_MIDDLEMOUSE: { io.InputMouseClicked[2] = true; } break;
+        case S3E_POINTER_BUTTON_MOUSEWHEELUP: { io.MouseWheel += pEvent->m_y; } break;
+        case S3E_POINTER_BUTTON_MOUSEWHEELDOWN: { io.MouseWheel += pEvent->m_y; } break;
+        }
+    }
+    else if(pEvent->m_Pressed == 0)
+    {
+        switch(pEvent->m_Button)
+        {
+        case S3E_POINTER_BUTTON_LEFTMOUSE: { io.InputMouseReleased[0] = true; } break;
+        case S3E_POINTER_BUTTON_RIGHTMOUSE: { io.InputMouseReleased[1] = true; } break;
+        case S3E_POINTER_BUTTON_MIDDLEMOUSE: { io.InputMouseReleased[2] = true; } break;
+        }
     }
 
     return 0;
@@ -168,7 +172,8 @@ int32 ImGui_Marmalade_CharCallback(void* system_data, void* user_data)
 {
     ImGuiIO& io = ImGui::GetIO();
     s3eKeyboardCharEvent* e = (s3eKeyboardCharEvent*)system_data;
-    io.AddInputCharacter((unsigned int)e->m_Char);
+    if ((e->m_Char > 0 && e->m_Char < 0x10000))
+        io.AddInputCharacter((unsigned short)e->m_Char);
 
     return 0;
 }
@@ -236,7 +241,6 @@ bool    ImGui_Marmalade_Init(bool install_callbacks)
     io.KeyMap[ImGuiKey_Space] = s3eKeySpace;
     io.KeyMap[ImGuiKey_Enter] = s3eKeyEnter;
     io.KeyMap[ImGuiKey_Escape] = s3eKeyEsc;
-    io.KeyMap[ImGuiKey_KeyPadEnter] = s3eKeyNumPadEnter;
     io.KeyMap[ImGuiKey_A] = s3eKeyA;
     io.KeyMap[ImGuiKey_C] = s3eKeyC;
     io.KeyMap[ImGuiKey_V] = s3eKeyV;
@@ -284,12 +288,6 @@ void ImGui_Marmalade_NewFrame()
     mouse_x = s3ePointerGetX();
     mouse_y = s3ePointerGetY();
     io.MousePos = ImVec2((float)mouse_x/g_scale.x, (float)mouse_y/g_scale.y);   // Mouse position (set to -FLT_MAX,-FLT_MAX if no mouse / on another screen, etc.)
-
-    for (int i = 0; i < 3; i++)
-    {
-        io.MouseDown[i] = g_MousePressed[i] || s3ePointerGetState((s3ePointerButton)i) != S3E_POINTER_STATE_UP;    // If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
-        g_MousePressed[i] = false;
-    }
 
     // TODO: Hide OS mouse cursor if ImGui is drawing it
     // s3ePointerSetInt(S3E_POINTER_HIDE_CURSOR,(io.MouseDrawCursor ? 0 : 1));

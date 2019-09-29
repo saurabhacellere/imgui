@@ -17,7 +17,6 @@
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
-//  2019-07-21: Inputs: Added mapping for ImGuiKey_KeyPadEnter.
 //  2019-04-23: Inputs: Added support for SDL_GameController (if ImGuiConfigFlags_NavEnableGamepad is set by user application).
 //  2019-03-12: Misc: Preserve DisplayFramebufferScale when main window is minimized.
 //  2018-12-21: Inputs: Workaround for Android/iOS which don't seem to handle focus related calls.
@@ -44,6 +43,7 @@
 #include "imgui_impl_sdl.h"
 
 // SDL
+// (the multi-viewports feature requires SDL features supported from SDL 2.0.5+)
 #include <SDL.h>
 #include <SDL_syswm.h>
 #if defined(__APPLE__)
@@ -56,7 +56,6 @@
 // Data
 static SDL_Window*  g_Window = NULL;
 static Uint64       g_Time = 0;
-static bool         g_MousePressed[3] = { false, false, false };
 static SDL_Cursor*  g_MouseCursors[ImGuiMouseCursor_COUNT] = { 0 };
 static char*        g_ClipboardTextData = NULL;
 
@@ -93,9 +92,26 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
         }
     case SDL_MOUSEBUTTONDOWN:
         {
-            if (event->button.button == SDL_BUTTON_LEFT) g_MousePressed[0] = true;
-            if (event->button.button == SDL_BUTTON_RIGHT) g_MousePressed[1] = true;
-            if (event->button.button == SDL_BUTTON_MIDDLE) g_MousePressed[2] = true;
+            int button = 0;
+            switch (event->button.button)
+            {
+            case SDL_BUTTON_LEFT: { button = 0; } break;
+            case SDL_BUTTON_RIGHT: { button = 1; } break;
+            case SDL_BUTTON_MIDDLE: { button = 2; } break;
+            }
+            io.InputMouseClicked[button] = true;
+            return true;
+        }
+    case SDL_MOUSEBUTTONUP:
+        {
+            int button = 0;
+            switch (event->button.button)
+            {
+            case SDL_BUTTON_LEFT: { button = 0; } break;
+            case SDL_BUTTON_RIGHT: { button = 1; } break;
+            case SDL_BUTTON_MIDDLE: { button = 2; } break;
+            }
+            io.InputMouseReleased[button] = true;
             return true;
         }
     case SDL_TEXTINPUT:
@@ -145,7 +161,6 @@ static bool ImGui_ImplSDL2_Init(SDL_Window* window)
     io.KeyMap[ImGuiKey_Space] = SDL_SCANCODE_SPACE;
     io.KeyMap[ImGuiKey_Enter] = SDL_SCANCODE_RETURN;
     io.KeyMap[ImGuiKey_Escape] = SDL_SCANCODE_ESCAPE;
-    io.KeyMap[ImGuiKey_KeyPadEnter] = SDL_SCANCODE_RETURN2;
     io.KeyMap[ImGuiKey_A] = SDL_SCANCODE_A;
     io.KeyMap[ImGuiKey_C] = SDL_SCANCODE_C;
     io.KeyMap[ImGuiKey_V] = SDL_SCANCODE_V;
@@ -192,14 +207,6 @@ bool ImGui_ImplSDL2_InitForVulkan(SDL_Window* window)
     return ImGui_ImplSDL2_Init(window);
 }
 
-bool ImGui_ImplSDL2_InitForD3D(SDL_Window* window)
-{
-#if !defined(_WIN32)
-    IM_ASSERT(0 && "Unsupported");
-#endif
-    return ImGui_ImplSDL2_Init(window);
-}
-
 void ImGui_ImplSDL2_Shutdown()
 {
     g_Window = NULL;
@@ -226,11 +233,7 @@ static void ImGui_ImplSDL2_UpdateMousePosAndButtons()
         io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
 
     int mx, my;
-    Uint32 mouse_buttons = SDL_GetMouseState(&mx, &my);
-    io.MouseDown[0] = g_MousePressed[0] || (mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;  // If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
-    io.MouseDown[1] = g_MousePressed[1] || (mouse_buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
-    io.MouseDown[2] = g_MousePressed[2] || (mouse_buttons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) != 0;
-    g_MousePressed[0] = g_MousePressed[1] = g_MousePressed[2] = false;
+    const Uint32 mouse_buttons = SDL_GetMouseState(&mx, &my);
 
 #if SDL_HAS_CAPTURE_AND_GLOBAL_MOUSE && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
     SDL_Window* focused_window = SDL_GetKeyboardFocus();
