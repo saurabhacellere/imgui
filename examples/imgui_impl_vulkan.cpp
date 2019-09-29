@@ -22,7 +22,6 @@
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
-//  2019-08-01: Vulkan: Added support for specifying multisample count. Set ImGui_ImplVulkan_InitInfo::MSAASamples to one of the VkSampleCountFlagBits values to use, default is non-multisampled as before.
 //  2019-05-29: Vulkan: Added support for large mesh (64K+ vertices), enable ImGuiBackendFlags_RendererHasVtxOffset flag.
 //  2019-04-30: Vulkan: Added support for special ImDrawCallback_ResetRenderState callback to reset render state.
 //  2019-04-04: *BREAKING CHANGE*: Vulkan: Added ImageCount/MinImageCount fields in ImGui_ImplVulkan_InitInfo, required for initialization (was previously a hard #define IMGUI_VK_QUEUED_FRAMES 2). Added ImGui_ImplVulkan_SetMinImageCount().
@@ -294,7 +293,7 @@ static void ImGui_ImplVulkan_SetupRenderState(ImDrawData* draw_data, VkCommandBu
     }
 
     // Setup scale and translation:
-    // Our visible imgui space lies from draw_data->DisplayPps (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayPos is (0,0) for single viewport apps.
+    // Our visible imgui space lies from draw_data->DisplayPos (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right). DisplayMin is typically (0,0) for single viewport apps.
     {
         float scale[2];
         scale[0] = 2.0f / draw_data->DisplaySize.x;
@@ -722,10 +721,7 @@ bool ImGui_ImplVulkan_CreateDeviceObjects()
 
     VkPipelineMultisampleStateCreateInfo ms_info = {};
     ms_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    if (v->MSAASamples != 0)
-        ms_info.rasterizationSamples = v->MSAASamples;
-    else
-        ms_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    ms_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineColorBlendAttachmentState color_attachment[1] = {};
     color_attachment[0].blendEnable = VK_TRUE;
@@ -807,7 +803,6 @@ void    ImGui_ImplVulkan_DestroyDeviceObjects()
 
 bool    ImGui_ImplVulkan_Init(ImGui_ImplVulkan_InitInfo* info, VkRenderPass render_pass)
 {
-    // Setup back-end capabilities flags
     ImGuiIO& io = ImGui::GetIO();
     io.BackendRendererName = "imgui_impl_vulkan";
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;  // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
