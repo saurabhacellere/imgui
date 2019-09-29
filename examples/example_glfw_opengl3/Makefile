@@ -35,11 +35,12 @@ CXXFLAGS += -I../libs/gl3w
 
 ## Using OpenGL loader: glew
 ## (This assumes a system-wide installation)
-# CXXFLAGS += -lGLEW -DIMGUI_IMPL_OPENGL_LOADER_GLEW
+# CXXFLAGS = -lGLEW -DIMGUI_IMPL_OPENGL_LOADER_GLEW
 
 ## Using OpenGL loader: glad
+## (You'll also need to change the rule at line ~77 of this Makefile to compile/link glad.c/.o)
 # SOURCES += ../libs/glad/src/glad.c
-# CXXFLAGS += -I../libs/glad/include -DIMGUI_IMPL_OPENGL_LOADER_GLAD
+# CXXFLAGS = -I../libs/glad/include -DIMGUI_IMPL_OPENGL_LOADER_GLAD
 
 ##---------------------------------------------------------------------
 ## BUILD FLAGS PER PLATFORM
@@ -86,9 +87,7 @@ endif
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 %.o:../libs/gl3w/GL/%.c
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-%.o:../libs/glad/src/%.c
+# %.o:../libs/glad/src/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 all: $(EXE)
