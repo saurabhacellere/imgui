@@ -1,9 +1,7 @@
-----------------------------------------------------------------------
- dear imgui, v1.73
-----------------------------------------------------------------------
- misc/fonts/README.txt
- This is the Readme dedicated to fonts.
-----------------------------------------------------------------------
+dear imgui, v1.71 WIP
+(Font Readme)
+
+---------------------------------------
 
 The code in imgui.cpp embeds a copy of 'ProggyClean.ttf' (by Tristan Grimmer),
 a 13 pixels high, pixel-perfect font used by default.
@@ -214,11 +212,9 @@ texture, and blit/copy any graphics data of your choice into those rectangles.
 
 Pseudo-code:
 
-  // Add font, then register two custom 13x13 rectangles mapped to glyph 'a' and 'b' of this font
+  // Add font, then register one custom 13x13 rectangle mapped to glyph 'a' of this font
   ImFont* font = io.Fonts->AddFontDefault();
-  int rect_ids[2];
-  rect_ids[0] = io.Fonts->AddCustomRectFontGlyph(font, 'a', 13, 13, 13+1);
-  rect_ids[1] = io.Fonts->AddCustomRectFontGlyph(font, 'b', 13, 13, 13+1);
+  int rect_id = io.Fonts->AddCustomRectFontGlyph(font, 'a', 13, 13, 13+1);
 
   // Build atlas
   io.Fonts->Build();
@@ -228,18 +224,14 @@ Pseudo-code:
   int tex_width, tex_height;
   io.Fonts->GetTexDataAsRGBA32(&tex_pixels, &tex_width, &tex_height);
 
-  for (int rect_n = 0; rect_n < IM_ARRAYSIZE(rect_ids); rect_n++)
+  // Fill the custom rectangle with red pixels (in reality you would draw/copy your bitmap data here)
+  if (const ImFontAtlas::CustomRect* rect = io.Fonts->GetCustomRectByIndex(rect_id))
   {
-      int rect_id = rects_ids[rect_n];
-      if (const ImFontAtlas::CustomRect* rect = io.Fonts->GetCustomRectByIndex(rect_id))
+      for (int y = 0; y < rect->Height; y++)
       {
-          // Fill the custom rectangle with red pixels (in reality you would draw/copy your bitmap data here!)
-          for (int y = 0; y < rect->Height; y++)
-          {
-              ImU32* p = (ImU32*)tex_pixels + (rect->Y + y) * tex_width + (rect->X);
-              for (int x = rect->Width; x > 0; x--)
-                  *p++ = IM_COL32(255, 0, 0, 255);
-          }
+          ImU32* p = (ImU32*)tex_pixels + (rect->Y + y) * tex_width + (rect->X);
+          for (int x = rect->Width; x > 0; x--)
+              *p++ = IM_COL32(255, 0, 0, 255);
       }
   }
 
@@ -287,13 +279,13 @@ ProggyClean.ttf
 
   Copyright (c) 2004, 2005 Tristan Grimmer
   MIT License
-  recommended loading setting: Size = 13.0, DisplayOffset.Y = +1
+  recommended loading setting in ImGui: Size = 13.0, DisplayOffset.Y = +1
   http://www.proggyfonts.net/
 
 ProggyTiny.ttf
   Copyright (c) 2004, 2005 Tristan Grimmer
   MIT License
-  recommended loading setting: Size = 10.0, DisplayOffset.Y = +1
+  recommended loading setting in ImGui: Size = 10.0, DisplayOffset.Y = +1
   http://www.proggyfonts.net/
 
 Karla-Regular.ttf
