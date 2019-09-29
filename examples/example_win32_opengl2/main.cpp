@@ -1,39 +1,73 @@
-// dear imgui: standalone example application for SDL2 + OpenGL
+// dear imgui: standalone example application for Win32 + WGL + OpenGL2, using legacy fixed pipeline
 // If you are new to dear imgui, see examples/README.txt and documentation at the top of imgui.cpp.
-// (SDL is a cross-platform general purpose library for handling windows, inputs, OpenGL/Vulkan graphics context creation, etc.)
 
 // **DO NOT USE THIS CODE IF YOUR CODE/ENGINE IS USING MODERN OPENGL (SHADERS, VBO, VAO, etc.)**
-// **Prefer using the code in the example_sdl_opengl3/ folder**
-// See imgui_impl_sdl.cpp for details.
+
+#include <windows.h>
+#include <GL/gl.h>
+#include <tchar.h>
 
 #include "imgui.h"
-#include "imgui_impl_sdl.h"
+#include "imgui_impl_win32.h"
 #include "imgui_impl_opengl2.h"
-#include <stdio.h>
-#include <SDL.h>
-#include <SDL_opengl.h>
+
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+        return true;
+
+    switch (msg)
+    {
+    case WM_SIZE:
+        glViewport(0, 0, LOWORD(lParam), HIWORD(lParam));
+        return 0;
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
+            return 0;
+        break;
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wParam, lParam);
+}
 
 int main(int, char**)
 {
-    // Setup SDL
-    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER) != 0)
+    // Create application window
+    WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("ImGui Example"), NULL };
+    RegisterClassEx(&wc);
+    HWND hwnd = CreateWindow(wc.lpszClassName, _T("Dear ImGui Win32+WGL+OpenGL2 Example"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+
+    // Setup pixel format
+    PIXELFORMATDESCRIPTOR pfd;
+    ZeroMemory(&pfd, sizeof(pfd));
+    pfd.nSize = sizeof(pfd);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits   = 32;
+
+    HDC hdc = GetDC(hwnd);
+    int pf = ChoosePixelFormat(hdc, &pfd);
+    if (pf == 0) // Cannot find suitable pixel format
     {
-        printf("Error: %s\n", SDL_GetError());
-        return -1;
+        UnregisterClass(wc.lpszClassName, wc.hInstance);
+        return 0;
     }
 
-    // Setup window
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-    SDL_DisplayMode current;
-    SDL_GetCurrentDisplayMode(0, &current);
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
-    SDL_GLContext gl_context = SDL_GL_CreateContext(window);
-    SDL_GL_SetSwapInterval(1); // Enable vsync
+    if (SetPixelFormat(hdc, pf, &pfd) == FALSE) // Cannot set format specified
+    {
+        UnregisterClass(wc.lpszClassName, wc.hInstance);
+        return 0;
+    }
+
+    DescribePixelFormat(hdc, pf, sizeof(pfd), &pfd);
+
+    // Create OpenGL context
+    HGLRC hrc = wglCreateContext(hdc);
+    wglMakeCurrent(hdc, hrc);
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -46,7 +80,7 @@ int main(int, char**)
     //ImGui::StyleColorsClassic();
 
     // Setup Platform/Renderer bindings
-    ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
+    ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplOpenGL2_Init();
 
     // Load Fonts
@@ -69,25 +103,27 @@ int main(int, char**)
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     // Main loop
-    bool done = false;
-    while (!done)
+    MSG msg;
+    ZeroMemory(&msg, sizeof(msg));
+    ShowWindow(hwnd, SW_SHOWDEFAULT);
+    UpdateWindow(hwnd);
+    while (msg.message != WM_QUIT)
     {
-        // Poll and handle events (inputs, window resize, etc.)
+        // Poll and handle messages (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
         // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
         // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
+        if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
         {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT)
-                done = true;
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            continue;
         }
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL2_NewFrame();
-        ImGui_ImplSDL2_NewFrame(window);
+        ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
 
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
@@ -128,23 +164,26 @@ int main(int, char**)
         }
 
         // Rendering
-        ImGui::Render();
-        glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+        ImGui::EndFrame();
         glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
-        //glUseProgram(0); // You may want this if using this code in an OpenGL 3+ context where shaders may be bound
+        ImGui::Render();
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-        SDL_GL_SwapWindow(window);
+        SwapBuffers(hdc);
+        static PAINTSTRUCT ps;
+        BeginPaint(hwnd, &ps);
+        EndPaint(hwnd, &ps);
     }
 
-    // Cleanup
     ImGui_ImplOpenGL2_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
 
-    SDL_GL_DeleteContext(gl_context);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+    wglMakeCurrent(NULL, NULL);
+    ReleaseDC(hwnd, hdc);
+    wglDeleteContext(hrc);
+    DestroyWindow(hwnd);
+    UnregisterClass(wc.lpszClassName, wc.hInstance);
 
     return 0;
 }
