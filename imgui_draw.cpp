@@ -1,4 +1,4 @@
-// dear imgui, v1.73
+// dear imgui, v1.73 WIP
 // (drawing and font code)
 
 /*
@@ -893,6 +893,17 @@ void ImDrawList::PathArcTo(const ImVec2& center, float radius, float a_min, floa
     }
 }
 
+void ImDrawList::PathEllipticalArcTo(const ImVec2& center, float radius_x, float radius_y, float a_min, float a_max, int num_segments)
+{
+    _Path.reserve(_Path.Size + (num_segments + 1));
+
+    for (int i = 0; i <= num_segments; i++)
+    {
+        const float a = a_min + ((float)i / (float)num_segments) * (a_max - a_min);
+        _Path.push_back(ImVec2(center.x + ImCos(a) * radius_x, center.y + ImSin(a) * radius_y));
+    }
+}
+
 static void PathBezierToCasteljau(ImVector<ImVec2>* path, float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4, float tess_tol, int level)
 {
     float dx = x4 - x1;
@@ -1090,6 +1101,28 @@ void ImDrawList::AddCircleFilled(const ImVec2& center, float radius, ImU32 col, 
     PathFillConvex(col);
 }
 
+void ImDrawList::AddEllipse(const ImVec2& center, float radius_x, float radius_y, ImU32 col, int num_segments, float thickness)
+{
+    if ((col & IM_COL32_A_MASK) == 0 || num_segments <= 2)
+        return;
+
+    // Because we are filling a closed shape we remove 1 from the count of segments/points
+    const float a_max = IM_PI * 2.0f * ((float)num_segments - 1.0f) / (float)num_segments;
+    PathEllipticalArcTo(center, radius_x, radius_y, 0.0f, a_max, num_segments - 1);
+    PathStroke(col, true, thickness);
+}
+
+void ImDrawList::AddEllipseFilled(const ImVec2& center, float radius_x, float radius_y, ImU32 col, int num_segments)
+{
+    if ((col & IM_COL32_A_MASK) == 0 || num_segments <= 2)
+        return;
+
+    // Because we are filling a closed shape we remove 1 from the count of segments/points
+    const float a_max = IM_PI * 2.0f * ((float)num_segments - 1.0f) / (float)num_segments;
+    PathEllipticalArcTo(center, radius_x, radius_y, 0.0f, a_max, num_segments - 1);
+    PathFillConvex(col);
+}
+
 void ImDrawList::AddBezierCurve(const ImVec2& pos0, const ImVec2& cp0, const ImVec2& cp1, const ImVec2& pos1, ImU32 col, float thickness, int num_segments)
 {
     if ((col & IM_COL32_A_MASK) == 0)
@@ -1202,7 +1235,7 @@ void ImDrawListSplitter::ClearFreeMemory()
 {
     for (int i = 0; i < _Channels.Size; i++)
     {
-        if (i == _Current)
+        if (i == _Current) 
             memset(&_Channels[i], 0, sizeof(_Channels[i]));  // Current channel is a copy of CmdBuffer/IdxBuffer, don't destruct again
         _Channels[i]._CmdBuffer.clear();
         _Channels[i]._IdxBuffer.clear();
@@ -1301,14 +1334,13 @@ void ImDrawListSplitter::Merge(ImDrawList* draw_list)
     }
     draw_list->_IdxWritePtr = idx_write;
     draw_list->UpdateClipRect(); // We call this instead of AddDrawCmd(), so that empty channels won't produce an extra draw call.
-    draw_list->UpdateTextureID();
     _Count = 1;
 }
 
 void ImDrawListSplitter::SetCurrentChannel(ImDrawList* draw_list, int idx)
 {
     IM_ASSERT(idx >= 0 && idx < _Count);
-    if (_Current == idx)
+    if (_Current == idx) 
         return;
     // Overwrite ImVector (12/16 bytes), four times. This is merely a silly optimization instead of doing .swap()
     memcpy(&_Channels.Data[_Current]._CmdBuffer, &draw_list->CmdBuffer, sizeof(draw_list->CmdBuffer));
@@ -1427,7 +1459,6 @@ ImFontConfig::ImFontConfig()
     MergeMode = false;
     RasterizerFlags = 0x00;
     RasterizerMultiply = 1.0f;
-    EllipsisChar = (ImWchar)-1;
     memset(Name, 0, sizeof(Name));
     DstFont = NULL;
 }
@@ -1620,9 +1651,6 @@ ImFont* ImFontAtlas::AddFont(const ImFontConfig* font_cfg)
         memcpy(new_font_cfg.FontData, font_cfg->FontData, (size_t)new_font_cfg.FontDataSize);
     }
 
-    if (new_font_cfg.DstFont->EllipsisChar == (ImWchar)-1)
-        new_font_cfg.DstFont->EllipsisChar = font_cfg->EllipsisChar;
-
     // Invalidate texture
     ClearTexData();
     return new_font_cfg.DstFont;
@@ -1657,7 +1685,6 @@ ImFont* ImFontAtlas::AddFontDefault(const ImFontConfig* font_cfg_template)
         font_cfg.SizePixels = 13.0f * 1.0f;
     if (font_cfg.Name[0] == '\0')
         ImFormatString(font_cfg.Name, IM_ARRAYSIZE(font_cfg.Name), "ProggyClean.ttf, %dpx", (int)font_cfg.SizePixels);
-    font_cfg.EllipsisChar = (ImWchar)0x0085;
 
     const char* ttf_compressed_base85 = GetDefaultCompressedFontDataTTFBase85();
     const ImWchar* glyph_ranges = font_cfg.GlyphRanges != NULL ? font_cfg.GlyphRanges : GetGlyphRangesDefault();
@@ -2202,23 +2229,6 @@ void ImFontAtlasBuildFinish(ImFontAtlas* atlas)
     for (int i = 0; i < atlas->Fonts.Size; i++)
         if (atlas->Fonts[i]->DirtyLookupTables)
             atlas->Fonts[i]->BuildLookupTable();
-
-    // Ellipsis character is required for rendering elided text. We prefer using U+2026 (horizontal ellipsis).
-    // However some old fonts may contain ellipsis at U+0085. Here we auto-detect most suitable ellipsis character.
-    // FIXME: Also note that 0x2026 is currently seldomly included in our font ranges. Because of this we are more likely to use three individual dots.
-    for (int i = 0; i < atlas->Fonts.size(); i++)
-    {
-        ImFont* font = atlas->Fonts[i];
-        if (font->EllipsisChar != (ImWchar)-1)
-            continue;
-        const ImWchar ellipsis_variants[] = { (ImWchar)0x2026, (ImWchar)0x0085 };
-        for (int j = 0; j < IM_ARRAYSIZE(ellipsis_variants); j++)
-            if (font->FindGlyphNoFallback(ellipsis_variants[j]) != NULL) // Verify glyph exists
-            {
-                font->EllipsisChar = ellipsis_variants[j];
-                break;
-            }
-    }
 }
 
 // Retrieve list of range (2 int per range, values are inclusive)
@@ -2488,7 +2498,6 @@ ImFont::ImFont()
     FontSize = 0.0f;
     FallbackAdvanceX = 0.0f;
     FallbackChar = (ImWchar)'?';
-    EllipsisChar = (ImWchar)-1;
     DisplayOffset = ImVec2(0.0f, 0.0f);
     FallbackGlyph = NULL;
     ContainerAtlas = NULL;
@@ -3036,13 +3045,18 @@ void ImFont::RenderText(ImDrawList* draw_list, float size, ImVec2 pos, ImU32 col
 // - RenderMouseCursor()
 // - RenderArrowPointingAt()
 // - RenderRectFilledRangeH()
+// - RenderPixelEllipsis()
 //-----------------------------------------------------------------------------
 
-void ImGui::RenderMouseCursor(ImDrawList* draw_list, ImVec2 pos, float scale, ImGuiMouseCursor mouse_cursor, ImU32 col_fill, ImU32 col_border, ImU32 col_shadow)
+void ImGui::RenderMouseCursor(ImDrawList* draw_list, ImVec2 pos, float scale, ImGuiMouseCursor mouse_cursor)
 {
     if (mouse_cursor == ImGuiMouseCursor_None)
         return;
     IM_ASSERT(mouse_cursor > ImGuiMouseCursor_None && mouse_cursor < ImGuiMouseCursor_COUNT);
+
+    const ImU32 col_shadow = IM_COL32(0, 0, 0, 48);
+    const ImU32 col_border = IM_COL32(0, 0, 0, 255);          // Black
+    const ImU32 col_fill   = IM_COL32(255, 255, 255, 255);    // White
 
     ImFontAtlas* font_atlas = draw_list->_Data->Font->ContainerAtlas;
     ImVec2 offset, size, uv[4];
@@ -3139,6 +3153,18 @@ void ImGui::RenderRectFilledRangeH(ImDrawList* draw_list, const ImRect& rect, Im
         }
     }
     draw_list->PathFillConvex(col);
+}
+
+// FIXME: Rendering an ellipsis "..." is a surprisingly tricky problem for us... we cannot rely on font glyph having it,
+// and regular dot are typically too wide. If we render a dot/shape ourselves it comes with the risk that it wouldn't match
+// the boldness or positioning of what the font uses...
+void ImGui::RenderPixelEllipsis(ImDrawList* draw_list, ImVec2 pos, ImU32 col, int count)
+{
+    ImFont* font = draw_list->_Data->Font;
+    const float font_scale = draw_list->_Data->FontSize / font->FontSize;
+    pos.y += (float)(int)(font->DisplayOffset.y + font->Ascent * font_scale + 0.5f - 1.0f);
+    for (int dot_n = 0; dot_n < count; dot_n++)
+        draw_list->AddRectFilled(ImVec2(pos.x + dot_n * 2.0f, pos.y), ImVec2(pos.x + dot_n * 2.0f + 1.0f, pos.y + 1.0f), col);
 }
 
 //-----------------------------------------------------------------------------
