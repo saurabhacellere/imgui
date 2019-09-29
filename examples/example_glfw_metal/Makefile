@@ -1,23 +1,44 @@
-#
 # You will need GLFW (http://www.glfw.org):
+# Mac OS X:
 #   brew install glfw
-#
 
-#CXX = g++
-#CXX = clang++
+CXX = clang++
 
-EXE = example_glfw_metal
+EXE = imgui_glfw_imgui_metal
 SOURCES = main.mm
 SOURCES += ../imgui_impl_glfw.cpp ../imgui_impl_metal.mm
-SOURCES += ../../imgui.cpp ../../imgui_widgets.cpp ../../imgui_demo.cpp ../../imgui_draw.cpp
+SOURCES += ../../imgui.cpp ../../imgui_demo.cpp ../../imgui_draw.cpp ../../imgui_widgets.cpp
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
+UNAME_S := $(shell uname -s)
 
-LIBS = -framework Metal -framework MetalKit -framework Cocoa -framework IOKit -framework CoreVideo -framework QuartzCore
-LIBS += -L/usr/local/lib -lglfw
+##---------------------------------------------------------------------
+## BUILD FLAGS PER PLATFORM
+##---------------------------------------------------------------------
+# up-to-date GLFW repo
+#GLFW_DIR = /usr/local	 # homebrew
+GLFW_DIR = ../../../glfw
 
-CXXFLAGS = -I../ -I../../ -I/usr/local/include
-CXXFLAGS += -Wall -Wformat
-CFLAGS = $(CXXFLAGS)
+ifeq ($(UNAME_S), Darwin) #APPLE
+	ECHO_MESSAGE = "Mac OS X"
+	LIBS = -framework Metal -framework QuartzCore -framework Cocoa -framework IOKit -framework CoreVideo
+	#LIBS += -L/usr/local/lib -lglfw3
+	#LIBS += -L$/usr/local/lib -lglfw
+	LIBS  += $(GLFW_DIR)/lib/Mac/libglfw3.a
+
+	CXXFLAGS += -I../ -I../../ -I/usr/local/include -I$(GLFW_DIR)/include
+	CXXFLAGS += -Wall -Wformat
+	CFLAGS = $(CXXFLAGS)
+endif
+
+##---------------------------------------------------------------------
+## BUILD RULES
+##---------------------------------------------------------------------
+
+%.o:%.mm
+	$(CXX) $(CXXFLAGS) -fobjc-arc -c -o $@ $<
+
+%.o:../%.mm
+		$(CXX) $(CXXFLAGS) -fobjc-arc -c -o $@ $<
 
 %.o:%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -28,14 +49,8 @@ CFLAGS = $(CXXFLAGS)
 %.o:../../%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-%.o:../%.mm
-	$(CXX) $(CXXFLAGS) -ObjC++ -fobjc-weak -fobjc-arc -c -o $@ $<
-
-%.o:%.mm
-	$(CXX) $(CXXFLAGS) -ObjC++ -fobjc-weak -fobjc-arc -c -o $@ $<
-
 all: $(EXE)
-	@echo Build complete
+	@echo Build complete for $(ECHO_MESSAGE)
 
 $(EXE): $(OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS)

@@ -1,109 +1,157 @@
-// ImGui - standalone example application for GLFW + Metal, using programmable pipeline
-// If you are new to ImGui, see examples/README.txt and documentation at the top of imgui.cpp.
-
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_metal.h"
-
+//========================================================================
+// Simple GLFW+Metal+Imgui example by DanCraft99@github.com
+// Based on Simple GLFW+Metal example
+// Copyright (c) Camilla Berglund <elmindreda@elmindreda.org>
+//
+// This software is provided 'as-is', without any express or implied
+// warranty. In no event will the authors be held liable for any damages
+// arising from the use of this software.
+//
+// Permission is granted to anyone to use this software for any purpose,
+// including commercial applications, and to alter it and redistribute it
+// freely, subject to the following restrictions:
+//
+// 1. The origin of this software must not be misrepresented; you must not
+//    claim that you wrote the original software. If you use this software
+//    in a product, an acknowledgment in the product documentation would
+//    be appreciated but is not required.
+//
+// 2. Altered source versions must be plainly marked as such, and must not
+//    be misrepresented as being the original software.
+//
+// 3. This notice may not be removed or altered from any source
+//    distribution.
+//
+//========================================================================
+//! [code]
 #define GLFW_INCLUDE_NONE
+#import <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_COCOA
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
-
+#import <GLFW/glfw3native.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
-
+#import <simd/simd.h>
+#include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
 
-static void glfw_error_callback(int error, const char* description)
+#include "imgui.h"
+#include "imgui_impl_metal.h"
+#include "imgui_impl_glfw.h"
+
+static void error_callback(int error, const char* description)
 {
-    fprintf(stderr, "Glfw Error %d: %s\n", error, description);
+    fputs(description, stderr);
 }
-
-int main(int, char**)
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    // Setup Dear ImGui binding
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+}
+int main(void)
+{
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+	if (!device)
+    exit(EXIT_FAILURE);
 
-    // Setup style
-    ImGui::StyleColorsDark();
-    //ImGui::StyleColorsClassic();
+  glfwSetErrorCallback(error_callback);
+  if (!glfwInit())
+    exit(EXIT_FAILURE);
 
-    // Load Fonts
-    // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
-    // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
-    // - If the file cannot be loaded, the function will return NULL. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
-    // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
-    // - Read 'misc/fonts/README.txt' for more instructions and details.
-    // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-    //io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-    //IM_ASSERT(font != NULL);
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  GLFWwindow* window = glfwCreateWindow(1280, 720, "Metal Example", NULL, NULL);
+  if (!window)
+  {
+    glfwTerminate();
+    exit(EXIT_FAILURE);
+  }
 
-    // Setup window
-    glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit())
-        return 1;
-
-    // Create window with graphics context
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+Metal example", NULL, NULL);
-    if (window == NULL)
-        return 1;
-
-    id <MTLDevice> device = MTLCreateSystemDefaultDevice();;
-    id <MTLCommandQueue> commandQueue = [device newCommandQueue];
-
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplMetal_Init(device);
-
-    NSWindow *nswin = glfwGetCocoaWindow(window);
-    CAMetalLayer *layer = [CAMetalLayer layer];
+  NSWindow* nswin = glfwGetCocoaWindow(window);
+  CAMetalLayer* layer = [CAMetalLayer layer];
     layer.device = device;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     nswin.contentView.layer = layer;
     nswin.contentView.wantsLayer = YES;
+    MTLCompileOptions* compileOptions = [MTLCompileOptions new];
+    compileOptions.languageVersion = MTLLanguageVersion1_1;
+    NSError* compileError;
+    id<MTLLibrary> lib = [device newLibraryWithSource:
+       @"#include <metal_stdlib>\n"
+        "using namespace metal;\n"
+        "vertex float4 v_simple(\n"
+        "    constant float4* in  [[buffer(0)]],\n"
+        "    uint             vid [[vertex_id]])\n"
+        "{\n"
+        "    return in[vid];\n"
+        "}\n"
+        "fragment float4 f_simple(\n"
+        "    float4 in [[stage_in]])\n"
+        "{\n"
+        "    return float4(1, 0, 0, 1);\n"
+        "}\n"
+       options:compileOptions error:&compileError];
+    if (!lib)
+    {
+        NSLog(@"can't create library: %@", compileError);
+        glfwTerminate();
+        exit(EXIT_FAILURE);
+    }
+    id<MTLFunction> vs = [lib newFunctionWithName:@"v_simple"];
+    assert(vs);
+    id<MTLFunction> fs = [lib newFunctionWithName:@"f_simple"];
+    assert(fs);
+    id<MTLCommandQueue> cq = [device newCommandQueue];
+    assert(cq);
+    MTLRenderPipelineDescriptor* rpd = [MTLRenderPipelineDescriptor new];
+    rpd.vertexFunction = vs;
+    rpd.fragmentFunction = fs;
+    rpd.colorAttachments[0].pixelFormat = layer.pixelFormat;
+    id<MTLRenderPipelineState> rps = [device newRenderPipelineStateWithDescriptor:rpd error:NULL];
+    assert(rps);
+    glfwSetKeyCallback(window, key_callback);
 
-    MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor new];
+    // initWithView
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui::StyleColorsDark();
 
-    // Our state
+    ImGui_ImplMetal_Init(device);
+    ImGui_ImplGlfw_InitForMetal(window, true);
+
     bool show_demo_window = true;
     bool show_another_window = false;
-    float clear_color[4] = {0.45f, 0.55f, 0.60f, 1.00f};
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-    // Main loop
     while (!glfwWindowShouldClose(window))
     {
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
-        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
 
+        float ratio;
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
+        ratio = width / (float) height;
         layer.drawableSize = CGSizeMake(width, height);
         id<CAMetalDrawable> drawable = [layer nextDrawable];
+        assert(drawable);
+        id<MTLCommandBuffer> cb = [cq commandBuffer];
+        MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor new];
+        MTLRenderPassColorAttachmentDescriptor* cd = rpd.colorAttachments[0];
+        cd.texture = drawable.texture;
+        cd.loadAction = MTLLoadActionClear;
+        cd.clearColor = MTLClearColorMake(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+        cd.storeAction = MTLStoreActionStore;
+        id<MTLRenderCommandEncoder> rce = [cb renderCommandEncoderWithDescriptor:rpd];
+        [rce setRenderPipelineState:rps];
+        // [rce setVertexBytes:(vector_float4[]){
+        //     { 0, 0, 0, 1 },
+        //     { -1, 1, 0, 1 },
+        //     { 1, 1, 0, 1 },
+        // } length:3 * sizeof(vector_float4) atIndex:0];
+        // [rce drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 
-        id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
-        renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(clear_color[0], clear_color[1], clear_color[2], clear_color[3]);
-        renderPassDescriptor.colorAttachments[0].texture = drawable.texture;
-        renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-        renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
-        id <MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
-        [renderEncoder pushDebugGroup:@"ImGui demo"];
-
-        // Start the Dear ImGui frame
-        ImGui_ImplMetal_NewFrame(renderPassDescriptor);
+        ////
+        ImGui_ImplMetal_NewFrame(rpd);
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
@@ -144,24 +192,20 @@ int main(int, char**)
             ImGui::End();
         }
 
-        // Rendering
         ImGui::Render();
-        ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), commandBuffer, renderEncoder);
+        ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cb, rce);
 
-        [renderEncoder popDebugGroup];
-        [renderEncoder endEncoding];
-
-        [commandBuffer presentDrawable:drawable];
-        [commandBuffer commit];
+        [rce endEncoding];
+        [cb presentDrawable:drawable];
+        [cb commit];
     }
 
-    // Cleanup
     ImGui_ImplMetal_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    return 0;
+    exit(EXIT_SUCCESS);
 }
+//! [code]
