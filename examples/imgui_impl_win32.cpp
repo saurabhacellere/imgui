@@ -18,7 +18,6 @@
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
-//  2019-05-11: Inputs: Don't filter value from WM_CHAR before calling AddInputCharacter().
 //  2019-01-17: Misc: Using GetForegroundWindow()+IsChild() instead of GetActiveWindow() to be compatible with windows created in a different thread or parent.
 //  2019-01-17: Inputs: Added support for mouse buttons 4 and 5 via WM_XBUTTON* messages.
 //  2019-01-15: Inputs: Added support for XInput gamepads (if ImGuiConfigFlags_NavEnableGamepad is set by user application).
@@ -78,7 +77,6 @@ bool    ImGui_ImplWin32_Init(void* hwnd)
     io.KeyMap[ImGuiKey_Space] = VK_SPACE;
     io.KeyMap[ImGuiKey_Enter] = VK_RETURN;
     io.KeyMap[ImGuiKey_Escape] = VK_ESCAPE;
-    io.KeyMap[ImGuiKey_KeyPadEnter] = VK_RETURN;
     io.KeyMap[ImGuiKey_A] = 'A';
     io.KeyMap[ImGuiKey_C] = 'C';
     io.KeyMap[ImGuiKey_V] = 'V';
@@ -265,13 +263,16 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
     case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK:
     {
         int button = 0;
-        if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) { button = 0; }
-        if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONDBLCLK) { button = 1; }
-        if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONDBLCLK) { button = 2; }
-        if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONDBLCLK) { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; }
+        switch(msg)
+        {
+        case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: { button = 0; } break;
+        case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: { button = 1; } break;
+        case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: { button = 2; } break;
+        case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK: { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; } break;
+        }
         if (!ImGui::IsAnyMouseDown() && ::GetCapture() == NULL)
             ::SetCapture(hwnd);
-        io.MouseDown[button] = true;
+        io.InputMouseClicked[button] = true;
         return 0;
     }
     case WM_LBUTTONUP:
@@ -280,11 +281,14 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
     case WM_XBUTTONUP:
     {
         int button = 0;
-        if (msg == WM_LBUTTONUP) { button = 0; }
-        if (msg == WM_RBUTTONUP) { button = 1; }
-        if (msg == WM_MBUTTONUP) { button = 2; }
-        if (msg == WM_XBUTTONUP) { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; }
-        io.MouseDown[button] = false;
+        switch (msg)
+        {
+        case WM_LBUTTONUP: { button = 0; } break;
+        case WM_RBUTTONUP: { button = 1; } break;
+        case WM_MBUTTONUP: { button = 2; } break;
+        case WM_XBUTTONUP: { button = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? 3 : 4; } break;
+        }
+        io.InputMouseReleased[button] = true;
         if (!ImGui::IsAnyMouseDown() && ::GetCapture() == hwnd)
             ::ReleaseCapture();
         return 0;
@@ -307,7 +311,8 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
         return 0;
     case WM_CHAR:
         // You can also use ToAscii()+GetKeyboardState() to retrieve characters.
-        io.AddInputCharacter((unsigned int)wParam);
+        if (wParam > 0 && wParam < 0x10000)
+            io.AddInputCharacter((unsigned short)wParam);
         return 0;
     case WM_SETCURSOR:
         if (LOWORD(lParam) == HTCLIENT && ImGui_ImplWin32_UpdateMouseCursor())
