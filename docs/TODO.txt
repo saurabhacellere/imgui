@@ -342,7 +342,6 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - inputs: add mouse cursor for unavailable/no? IDC_NO/SDL_SYSTEM_CURSOR_NO.
  - inputs/scrolling: support for smooth scrolling (#2462, #2569)
 
- - misc: idle: expose "woken up" boolean (set by inputs) and/or animation time (for cursor blink) for back-end to be able stop refreshing easily.
  - misc: idle: if cursor blink if the _only_ visible animation, core imgui could rewrite vertex alpha to avoid CPU pass on ImGui:: calls.
  - misc: idle: if cursor blink if the _only_ visible animation, could even expose a dirty rectangle that optionally can be leverage by some app to render in a smaller viewport, getting rid of much pixel shading cost.
  - misc: make the ImGuiCond values linear (non-power-of-two). internal storage for ImGuiWindow can use integers to combine into flags (Why?)
@@ -363,9 +362,7 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - demo: add virtual scrolling example?
  - demo: demonstrate Plot offset
  - examples: window minimize, maximize (#583)
- - examples: provide a zero frame-rate/idle example.
  - examples: apple: example_apple should be using modern GL3.
- - examples: glfw: could go idle when minimized? if (glfwGetWindowAttrib(window, GLFW_ICONIFIED)) { glfwWaitEvents(); continue; } // issue: DeltaTime will be super high on resume, perhaps provide a way to let impl know (#440)
  - examples: opengl: rename imgui_impl_opengl2 to impl_opengl_legacy and imgui_impl_opengl3 to imgui_impl_opengl? (#1900)
  - examples: opengl: could use a single vertex buffer and glBufferSubData for uploads?
  - examples: opengl: explicitly disable GL_STENCIL_TEST in bindings.
